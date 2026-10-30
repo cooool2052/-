@@ -1,0 +1,93 @@
+from pathlib import Path
+
+html = r'''<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>سجل صيانة الأجهزة</title>
+<style>
+:root{font-family:system-ui,-apple-system,"Segoe UI",Tahoma,Arial,sans-serif;color:#18212f;background:#f3f6fb}
+*{box-sizing:border-box}body{margin:0;padding:18px}.wrap{max-width:850px;margin:auto}
+header{background:#183b56;color:white;padding:22px;border-radius:18px;margin-bottom:16px}
+h1{font-size:1.55rem;margin:0 0 7px}header p{margin:0;color:#d9e8f2}
+.card{background:white;border:1px solid #e0e7ef;border-radius:16px;padding:18px;margin-bottom:16px;box-shadow:0 5px 18px #17324d0a}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+label{display:block;font-weight:650;margin-bottom:6px}
+input,textarea{width:100%;font:inherit;padding:11px 12px;border:1px solid #cbd5e1;border-radius:10px;background:#fff}
+textarea{min-height:90px;resize:vertical}.full{grid-column:1/-1}
+button{font:inherit;font-weight:700;border:0;border-radius:10px;padding:11px 15px;cursor:pointer}
+.primary{background:#176b87;color:#fff}.secondary{background:#e8f0f5;color:#183b56}.danger{background:#ffeded;color:#a32929}
+.actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:14px}
+#preview{display:none;max-width:100%;max-height:240px;border-radius:12px;margin-top:10px;border:1px solid #d5dee8}
+.money{background:#edf8f3;padding:12px;border-radius:10px;font-weight:750;margin-top:12px}
+.entry{border:1px solid #e0e7ef;border-radius:12px;padding:13px;margin-top:10px}
+.entrytop{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}.entry img{max-width:130px;max-height:110px;object-fit:cover;border-radius:8px;margin-top:8px}
+.muted{color:#637184;font-size:.92rem}.empty{color:#637184;text-align:center;padding:15px}
+@media(max-width:580px){body{padding:10px}.grid{grid-template-columns:1fr}.full{grid-column:auto}header{padding:18px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+<h1>سجل صيانة الأجهزة</h1>
+<p>سجّل بيانات الجهاز والعطل والتكلفة والمدفوع، مع صورة وتاريخ الاستلام.</p>
+</header>
+<form id="repairForm" class="card">
+<h2>تسجيل عملية صيانة</h2>
+<div class="grid">
+<div><label for="device">اسم الجهاز *</label><input id="device" required placeholder="مثال: موبايل سامسونج A54"></div>
+<div><label for="date">تاريخ الاستلام</label><input id="date" type="date"></div>
+<div class="full"><label for="fault">وصف العطل *</label><textarea id="fault" required placeholder="اكتب وصف العطل والملاحظات..."></textarea></div>
+<div><label for="total">التكلفة الإجمالية (جنيه) *</label><input id="total" type="number" min="0" step="0.01" required placeholder="0.00"></div>
+<div><label for="paid">المدفوع (جنيه)</label><input id="paid" type="number" min="0" step="0.01" value="0"></div>
+<div class="full"><label for="photo">صورة الجهاز</label><input id="photo" type="file" accept="image/*" capture="environment"><img id="preview" alt="معاينة صورة الجهاز"><div class="muted">على الموبايل يمكنك التصوير بالكاميرا أو اختيار صورة من الجهاز.</div></div>
+</div>
+<div class="money" id="remaining">المتبقي: 0.00 جنيه</div>
+<div class="actions"><button class="primary" type="submit">حفظ عملية الصيانة</button><button class="secondary" type="button" id="clear">تفريغ الحقول</button></div>
+<p class="muted">الحفظ محلي على نفس المتصفح والجهاز. صدّر نسخة احتياطية بانتظام.</p>
+</form>
+<section class="card">
+<div class="entrytop"><h2 style="margin:0">سجل العمليات</h2><div class="actions" style="margin:0"><button class="secondary" id="export" type="button">تصدير نسخة JSON</button><button class="secondary" id="csv" type="button">تصدير CSV</button></div></div>
+<div id="records"><div class="empty">لا توجد عمليات مسجلة بعد.</div></div>
+</section>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+const KEY='repair_log_ar_v1';
+let photoData='';
+let records=[];
+try{records=JSON.parse(localStorage.getItem(KEY)||'[]')}catch(e){records=[]}
+$('date').value=new Date().toLocaleDateString('en-CA');
+$('photo').addEventListener('change',()=>{
+ const file=$('photo').files[0]; if(!file){photoData='';$('preview').style.display='none';return}
+ if(file.size>5*1024*1024){alert('حجم الصورة كبير. اختَر صورة أقل من 5 ميجابايت.');$('photo').value='';return}
+ const reader=new FileReader();reader.onload=()=>{photoData=reader.result;$('preview').src=photoData;$('preview').style.display='block'};reader.readAsDataURL(file);
+});
+function num(id){return Math.max(0,Number($(id).value)||0)}
+function updateRemaining(){const rem=num('total')-num('paid');$('remaining').textContent='المتبقي: '+Math.max(0,rem).toFixed(2)+' جنيه'+(rem<0?' — تنبيه: المدفوع أكبر من الإجمالي':'')}
+$('total').addEventListener('input',updateRemaining);$('paid').addEventListener('input',updateRemaining);
+$('repairForm').addEventListener('submit',e=>{
+ e.preventDefault();const total=num('total'),paid=num('paid');
+ if(paid>total&&!confirm('المدفوع أكبر من التكلفة الإجمالية. هل تريد الحفظ؟'))return;
+ const item={id:Date.now(),device:$('device').value.trim(),date:$('date').value,fault:$('fault').value.trim(),total,paid,remaining:total-paid,photo:photoData};
+ records.unshift(item);persist();render();$('repairForm').reset();photoData='';$('preview').style.display='none';$('date').value=new Date().toLocaleDateString('en-CA');updateRemaining();
+});
+$('clear').addEventListener('click',()=>{if(confirm('تفريغ الحقول الحالية؟')){$('repairForm').reset();photoData='';$('preview').style.display='none';$('date').value=new Date().toLocaleDateString('en-CA');updateRemaining()}});
+function persist(){try{localStorage.setItem(KEY,JSON.stringify(records))}catch(e){alert('تعذّر الحفظ. قد تكون الصور كبيرة؛ جرّب صورة أصغر أو احذف بعض السجلات.')}} 
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function render(){
+ const box=$('records');if(!records.length){box.innerHTML='<div class="empty">لا توجد عمليات مسجلة بعد.</div>';return}
+ box.innerHTML=records.map(r=>`<article class="entry"><div class="entrytop"><strong>${esc(r.device)}</strong><span>${esc(r.date||'بدون تاريخ')}</span></div><p>${esc(r.fault)}</p><div>الإجمالي: <b>${Number(r.total).toFixed(2)}</b> جنيه · المدفوع: <b>${Number(r.paid).toFixed(2)}</b> جنيه · المتبقي: <b>${Number(r.remaining).toFixed(2)}</b> جنيه</div>${r.photo?`<img src="${r.photo}" alt="صورة الجهاز">`:''}<div class="actions"><button class="danger" type="button" onclick="deleteRecord(${r.id})">حذف السجل</button></div></article>`).join('');
+}
+window.deleteRecord=id=>{if(confirm('هل تريد حذف هذا السجل؟')){records=records.filter(r=>r.id!==id);persist();render()}};
+function download(name,content,type){const blob=new Blob([content],{type});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;a.click();URL.revokeObjectURL(url)}
+$('export').addEventListener('click',()=>download('repair-records.json',JSON.stringify(records,null,2),'application/json;charset=utf-8'));
+$('csv').addEventListener('click',()=>{const cols=['device','date','fault','total','paid','remaining'];const rows=[['اسم الجهاز','التاريخ','العطل','الإجمالي','المدفوع','المتبقي'],...records.map(r=>cols.map(c=>String(r[c]??'').replace(/"/g,'""')))];download('repair-records.csv','\ufeff'+rows.map(row=>row.map(v=>'"'+v+'"').join(',')).join('\r\n'),'text/csv;charset=utf-8')});
+render();updateRemaining();
+</script>
+</body>
+</html>'''
+path = Path("/mnt/data/سجل_صيانة_الأجهزة.html")
+path.write_text(html, encoding="utf-8")
+print(f"تم إنشاء الملف: {path}")
